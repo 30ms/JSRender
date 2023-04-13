@@ -1,0 +1,174 @@
+<html>
+<body>
+<canvas id="canvas" width="480" height="480"></canvas>
+<script src="./render.js"></script>
+<script>
+	let canvas = document.getElementById('canvas');
+	let ctx = canvas.getContext('2d');
+	let width = canvas.width, height = canvas.height;
+	
+	let render = createRender();
+	
+	function createRender(){
+		let {Vector4,Matrix4x4,GL_BUFFER_TYPE,Mode,VertexAttribPointer,FrameBuffer,Render} = GL;
+		//-------------------------- prepare vertex data -------------------------------------
+		let vertex_pos = [
+					-0.5, 0.5, 0.5,
+					0.5, 0.5, 0.5,
+					0.5, -0.5, 0.5,
+					-0.5, -0.5, 0.5,
+					// Z-
+					-0.5, 0.5, -0.5,
+					0.5, 0.5, -0.5,
+					0.5, -0.5, -0.5,
+					-0.5, -0.5, -0.5,
+					// Y+
+					0.5, 0.5, -0.5,
+					0.5, 0.5, 0.5,
+					-0.5, 0.5, 0.5,
+					-0.5, 0.5, -0.5,
+					// Y-
+					0.5, -0.5, -0.5,
+					0.5, -0.5, 0.5,
+					-0.5, -0.5, 0.5,
+					-0.5, -0.5, -0.5,
+					// X+
+					0.5, -0.5, 0.5,
+					0.5, 0.5, 0.5,
+					0.5, 0.5, -0.5,
+					0.5, -0.5, -0.5,
+					// X-
+					-0.5, -0.5, 0.5,
+					-0.5, 0.5, 0.5,
+					-0.5, 0.5, -0.5,
+					-0.5, -0.5, -0.5];
+					
+		let randomColor = () => [255*Math.random(),255*Math.random(),255*Math.random(),255];	
+		
+		let range = (start, stop, step) => Array.from({length: (stop-start)/step +1},(e,i)=>start + i *step);
+		
+		let vertex_color = range(0,vertex_pos.length/3,1).flatMap(()=>randomColor());
+					
+		let indices = [
+					// Z+
+					0, 1, 3,
+					1, 2, 3,
+					// Z-
+					4, 5, 7,
+					5, 6, 7,
+					// Y+
+					8, 11, 9,
+					9, 11, 10,
+					// Y-
+					12, 13, 15,
+					13, 14, 15,
+					// X+
+					16, 19, 17,
+					17, 19, 18,
+					// X-
+					20, 21, 23,
+					21, 22, 23];
+		//vertex attribute array component type
+		let pos_t = GL_BUFFER_TYPE.FLOAT, col_t = GL_BUFFER_TYPE.UNSIGNED_BYTE;			
+		//vertex attribute component byte sizes
+		let pos_ps = pos_t.BYTES_PER_ELEMENT, col_ps = col_t.BYTES_PER_ELEMENT;
+		//vertex attribute component sizes
+		let pos_cs = 3, col_cs = 4;
+		//vertex attribute byte sizes
+		let pos_bs = pos_ps * pos_cs, col_bs = col_ps * col_cs;
+		//vertex stride 
+		let stride = pos_bs + col_bs;
+		//vertex count
+		let vertexCnt = vertex_pos.length;
+		
+		//binding vertex attribute buffer data
+		let vertexBuffer = new ArrayBuffer(vertexCnt * stride);
+		for(let i=0;i<vertexCnt;i++){
+			let posBuffer = new pos_t(vertexBuffer, i * stride, pos_cs);
+			for(let ci=0; ci < pos_cs; ci++){
+				posBuffer[ci] = vertex_pos[ i * pos_cs + ci];
+			}
+			let colBuffer = new col_t(vertexBuffer, i * stride + pos_bs, col_cs)
+			for(let ci=0; ci < col_cs; ci++){
+				colBuffer[ci] = vertex_color[ i * col_cs + ci];
+			}
+		}
+		//setting vertex attribute pointer
+		let vertexAttributePointers = [];
+		vertexAttributePointers[0] = new VertexAttribPointer(pos_t,pos_cs,stride,0);
+		vertexAttributePointers[1] = new VertexAttribPointer(col_t,col_cs,stride,pos_bs);
+		
+		//binding vertex index buffer data
+		let index_t = GL_BUFFER_TYPE.UNSIGNED_SHORT;
+		let indexBuffer = new index_t(indices.length);
+		for(let i=0;i<indices.length;i++){
+			indexBuffer[i] = indices[i];
+		}
+		
+		//init frame buffer
+		let frameBuffer = new FrameBuffer(width, height, new Vector4(0,0,0,255), 10);
+		
+		//init render
+		let render = new Render(vertexBuffer,vertexAttributePointers,indexBuffer,frameBuffer);
+		
+		//-------------------- program rendering pipeline ---------------------------------
+		
+		//MVP mat
+		let modelMat = Matrix4x4.identify();
+		let viewMat = Matrix4x4.lookAt(new Vector4(0,0,3), new Vector4(0,0,0), new Vector4(0,1,0,0));
+		let projMat = Matrix4x4.perspectProjecton(width/height, 45, 0.1, 10);
+		//uniforms
+		render.uniforms.mMat = modelMat;
+		render.uniforms.vMat = viewMat;
+		render.uniforms.pMat = projMat;
+		
+		//vertex shader
+		let vertexShader = function(attributes, varyings, uniforms){
+			let pos = attributes[0], pos_vec4 = new Vector4(pos[0],pos[1],pos[2],pos[3]);
+			let mvpMat = uniforms.pMat.multiplyMat(uniforms.vMat).multiplyMat(uniforms.mMat);
+			//set color varying
+			varyings.color = attributes[1];
+			return mvpMat.multiplyVec4(pos_vec4);
+		}
+		
+		//fragment shaer
+		let fragmentShader = function(varyings, uniorms){
+			let color = varyings.color;
+			return new Vector4(color[0],color[1],color[2],color[3]);
+		}
+
+		render.vertexShader = vertexShader;
+		render.fragmentShader = fragmentShader;
+		return render;
+	}
+	
+	
+	//----------------  draw ------------------------------------------
+	
+	//canvas pixel data
+	const imageData = ctx.getImageData(0,0,width,height);
+	//draw pre 16 ms (60FPS)
+	setInterval(()=>{
+		render.frameBuffer.clear();
+		//rotate 1° around the Y axis
+		render.uniforms.mMat = render.uniforms.mMat.multiplyMat(GL.Matrix4x4.rotationY(1));
+		//draw buffer
+		render.drawElements(GL.Mode.TRIANGLES,render.indexBuffer.length,0);
+	
+		//display
+		for(let x=0;x<width;x++){
+			for(let y=0;y<height;y++){
+				let color = render.frameBuffer.getColor(x,y);
+				//y 反向
+				let index = x + width * (height - y);
+				imageData.data[index*4]   = color.X;
+				imageData.data[index*4+1] = color.Y;
+				imageData.data[index*4+2] = color.Z;
+				imageData.data[index*4+3] = color.W;
+			}
+		}
+		ctx.putImageData(imageData,0,0)
+	},16.67);
+</script>
+</body>
+</html>
