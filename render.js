@@ -131,6 +131,13 @@
 							 0,0,0,1);
 	}
 	
+	function transfer(vec4){
+		return new Matrix4x4(1,0,0,vec4.X,
+							 0,1,0,vec4.Y,
+							 0,0,1,vec4.Z,
+							 0,0,0,1);
+	}
+	
 	const GL_BUFFER_TYPE = {
 		UNSIGNED_BYTE:  Uint8Array,
 		UNSIGNED_SHORT: Uint16Array,
@@ -223,6 +230,10 @@
 		this.varyings = [];
 	};
 	
+
+	Render.CLIPPED_PLANE_Z = new Vector4(0,0,1,1);
+	
+	
 	Render.prototype.drawElements = function(mode,count,offset){
 		
 		//index
@@ -241,110 +252,165 @@
 			);
 		}
 		
-		// clipping
-		// TODO
-		
-		
 
 		// rasterization
 		switch(mode){
-			case 0:
+			case Mode.POINTS:
+				//TODO
 				break;
-			case 1:
+			case Mode.LINES:
+				//TODO
 				break;
-			case 2:
-				let numTriangle = ib.length / 3;
-				for(let idx=0; idx<numTriangle; idx++){
-					// triangle vertex varyings
-					let vertex_vars_a = this.varyings[ib[idx*3]],
-						vertex_vars_b = this.varyings[ib[idx*3+1]],
-						vertex_vars_c = this.varyings[ib[idx*3+2]];
-					// triangle vertex clip coord
-					let vertex_clip_p_a = this.gl_positions[ib[idx*3]],
-						vertex_clip_p_b = this.gl_positions[ib[idx*3+1]],
-						vertex_clip_p_c = this.gl_positions[ib[idx*3+2]];
-					// perspectiveDivide ndc coord
-					let	vertex_ndc_p_a = toNDC(vertex_clip_p_a),
-						vertex_ndc_p_b = toNDC(vertex_clip_p_b),
-						vertex_ndc_p_c = toNDC(vertex_clip_p_c);
-					// viewport transformation screen coord
-					let vertex_src_p_a = viewportTransformations(vertex_ndc_p_a,this.frameBuffer),
-						vertex_src_p_b = viewportTransformations(vertex_ndc_p_b,this.frameBuffer),
-						vertex_src_p_c = viewportTransformations(vertex_ndc_p_c,this.frameBuffer);
+			case Mode.TRIANGLES:
+				
+				let idx_a, idx_b, idx_c;
+				
+				
+				for(let idx=0; idx<ib.length/3; idx++) {
+					idx_a = ib[idx*3], idx_b = ib[idx*3+1], idx_c = ib[idx*3+2];
 					
-					let area_abc = edg(vertex_src_p_a, vertex_src_p_b, vertex_src_p_c);
+					// clipping triangle
+					let clippedIndices = []
+					clippedIndices.push(...this.clippingLine(idx_a, idx_b, Render.CLIPPED_PLANE_Z))
+					clippedIndices.push(...this.clippingLine(idx_b, idx_c, Render.CLIPPED_PLANE_Z))
+					clippedIndices.push(...this.clippingLine(idx_c, idx_a, Render.CLIPPED_PLANE_Z))
 					
-					//bound box
-					let start_x = Math.min(vertex_src_p_a.X, vertex_src_p_b.X, vertex_src_p_c.X);
-					let end_x = Math.max(vertex_src_p_a.X, vertex_src_p_b.X, vertex_src_p_c.X);
-					let start_y = Math.min(vertex_src_p_a.Y, vertex_src_p_b.Y, vertex_src_p_c.Y);
-					let end_y = Math.max(vertex_src_p_a.Y, vertex_src_p_b.Y, vertex_src_p_c.Y);
-					start_x = Math.floor(Math.max(0, start_x));
-					end_x = Math.min(end_x, this.frameBuffer.width);
-					start_y = Math.floor(Math.max(0, start_y));
-					end_y = Math.min(end_y, this.frameBuffer.height);
-					
-	
-					let d;
-					let area_abd, area_bcd, area_cad;
-					let i,j,k;
-					let depth;
-					//draw each pixel in the bound box
-					for(let y = start_y; y < end_y; y++){
-						for(let x = start_x; x < end_x; x++){
-							//centre of the pixel
-							d = new Vector4(x+0.5,y+0.5,0);
+					//rasterize polygons
+					for(let idx=0; idx<clippedIndices.length-2; idx++) {
+						idx_a=clippedIndices[0], idx_b=clippedIndices[idx+1], idx_c=clippedIndices[idx+2]
+						
+						
+						// triangle vertex varyings
+						let vertex_vars_a = this.varyings[idx_a],
+							vertex_vars_b = this.varyings[idx_b],
+							vertex_vars_c = this.varyings[idx_c];
+			
+						// triangle vertex clip coord
+						let vertex_clip_p_a = this.gl_positions[idx_a],
+							vertex_clip_p_b = this.gl_positions[idx_b],
+							vertex_clip_p_c = this.gl_positions[idx_c];
+						
 							
-							area_abd = edg(vertex_src_p_a, vertex_src_p_b, d);
-							area_bcd = edg(vertex_src_p_b, vertex_src_p_c, d);
-							area_cad = edg(vertex_src_p_c, vertex_src_p_a, d);
-							//barycentric
-							i = area_bcd / area_abc, j = area_cad / area_abc, k = area_abd / area_abc;
+						// perspectiveDivide ndc coord
+						let	vertex_ndc_p_a = toNDC(vertex_clip_p_a),
+							vertex_ndc_p_b = toNDC(vertex_clip_p_b),
+							vertex_ndc_p_c = toNDC(vertex_clip_p_c);
+						// viewport transformation screen coord
+						let vertex_src_p_a = viewportTransformations(vertex_ndc_p_a,this.frameBuffer),
+							vertex_src_p_b = viewportTransformations(vertex_ndc_p_b,this.frameBuffer),
+							vertex_src_p_c = viewportTransformations(vertex_ndc_p_c,this.frameBuffer);
+						
+						let area_abc = edg(vertex_src_p_a, vertex_src_p_b, vertex_src_p_c);
+						
+						//bound box
+						let start_x = Math.min(vertex_src_p_a.X, vertex_src_p_b.X, vertex_src_p_c.X);
+						let end_x = Math.max(vertex_src_p_a.X, vertex_src_p_b.X, vertex_src_p_c.X);
+						let start_y = Math.min(vertex_src_p_a.Y, vertex_src_p_b.Y, vertex_src_p_c.Y);
+						let end_y = Math.max(vertex_src_p_a.Y, vertex_src_p_b.Y, vertex_src_p_c.Y);
+						start_x = Math.floor(Math.max(0, start_x));
+						end_x = Math.min(end_x, this.frameBuffer.width);
+						start_y = Math.floor(Math.max(0, start_y));
+						end_y = Math.min(end_y, this.frameBuffer.height);
+						
+		
+						let d;
+						let area_abd, area_bcd, area_cad;
+						let i,j,k;
+						let depth;
+						//draw each pixel in the bound box
+						for(let y = start_y; y < end_y; y++){
+							for(let x = start_x; x < end_x; x++){
+								//centre of the pixel
+								d = new Vector4(x+0.5,y+0.5,0);
+								
+								area_abd = edg(vertex_src_p_a, vertex_src_p_b, d);
+								area_bcd = edg(vertex_src_p_b, vertex_src_p_c, d);
+								area_cad = edg(vertex_src_p_c, vertex_src_p_a, d);
+								//barycentric
+								i = area_bcd / area_abc, j = area_cad / area_abc, k = area_abd / area_abc;
+								
+								// test pixel inside the triangle
+								if(i < 0 || j < 0 || k < 0) continue;
+								
+								
+								// Z reclamation,  1/Zn = i * 1/Z1 + j * 1/Z2 + k * 1/Z3;
+								depth = 1 / (i/vertex_src_p_a.Z + j/vertex_src_p_b.Z + k/vertex_src_p_c.Z)
+								
+								//barycentric reclamation
+								i *= depth/vertex_src_p_a.Z 
+								j *= depth/vertex_src_p_b.Z 
+								k *= depth/vertex_src_p_c.Z 
 							
-							// test pixel inside the triangle
-							if(i < 0 || j < 0 || k < 0) continue;
-							
-							// Wclip = -Zview
-							// Z reclamation,  1/Zn = i * 1/Z1 + j * 1/Z2 + k * 1/Z3;
-							i /= vertex_src_p_a.W;
-							j /= vertex_src_p_b.W;
-							k /= vertex_src_p_c.W;
-
-							depth = 1/(i+j+k);
-							
-							// depth test
-							if(this.frameBuffer.getDepth(x, y) < depth) continue;
-							this.frameBuffer.setDepth(x, y, depth);
-							
-							//barycentric reclamation
-							i *= depth;
-							j *= depth;
-							k *= depth;
-							
-							let fragment_vars = {};
-							//varyings interpolation
-							for(const [key, value] of Object.entries(vertex_vars_a)){
-							    fragment_vars[key] = [];
-								let v_f = fragment_vars[key],
-									v_a = vertex_vars_a[key],
-									v_b = vertex_vars_b[key],
-									v_c = vertex_vars_c[key];
-								//varying component interpolation
-								for(let idx = 0; idx < value.length; idx++){
-									v_f[idx] = interpolationBarycentric(v_a[idx],v_b[idx],v_c[idx],i,j,k);
+								
+								// depth test
+								if(this.frameBuffer.getDepth(x, y) < depth) continue;
+								this.frameBuffer.setDepth(x, y, depth);
+								
+								
+								let fragment_vars = {};
+								//varyings interpolation
+								for(const [key, value] of Object.entries(vertex_vars_a)){
+									fragment_vars[key] = [];
+									let v_f = fragment_vars[key],
+										v_a = vertex_vars_a[key],
+										v_b = vertex_vars_b[key],
+										v_c = vertex_vars_c[key];
+									//varying component interpolation
+									for(let idx = 0; idx < value.length; idx++){
+										v_f[idx] = interpolationBarycentric(v_a[idx],v_b[idx],v_c[idx],i,j,k);
+									}
 								}
+								// fragment shader
+								let color = this.fragmentShader(fragment_vars, this.uniforms);
+								this.frameBuffer.setColor(x,y,color);
+								
 							}
-							// fragment shader
-							let color = this.fragmentShader(fragment_vars, this.uniforms);
-							this.frameBuffer.setColor(x,y,color);
-							
 						}
 					}
+					
 				}
 			
 		}
 	
 	}
+	
+	Render.prototype.clippingLine = function(v1_idx, v2_idx, plane){
+		let result = [], positions = this.gl_positions, varyings = this.varyings
+		let v1_pos = positions[v1_idx], v2_pos = positions[v2_idx];
+		let f1 = plane.dot(v1_pos), f2 = plane.dot(v2_pos);
+		let t, intersection;
+		if( f1 * f2 < 0){
+			t = f1 / (f1-f2);
+			intersection = new Vector4(
+				interpolationLiner(v1_pos.X, v2_pos.X, t),
+				interpolationLiner(v1_pos.Y, v2_pos.Y, t),
+				interpolationLiner(v1_pos.Z, v2_pos.Z, t)
+			)
+			
+			//varyings interpolation
+			let v1_vars = varyings[v1_idx], v2_vars = varyings[v2_idx]
+			let fragment_vars = {}
+			for(const [key, value] of Object.entries(v1_vars)){
+				fragment_vars[key] = [];
+				let v_f = fragment_vars[key],
+					v_v1 = v1_vars[key],
+					v_v2 = v2_vars[key];							
+				//varying component interpolation
+				for(let idx = 0; idx < value.length; idx++){
+					v_f[idx] = interpolationLiner(v_v1[idx],v_v2[idx],t);
+				}
+			}
+			
+			positions.push(intersection)
+			varyings.push(fragment_vars)
+			result.push(positions.length-1)
+		}
+		if ( f2 > 0 ) {
+			result.push(v2_idx)
+		}
+		return result
+	}
+
 	
 	function toNDC(vertex_clip_p){
 		return new Vector4(vertex_clip_p.X/vertex_clip_p.W,
@@ -368,6 +434,11 @@
 		return var1*i + var2 *j + var3*k;
 	}
 	
+	function interpolationLiner(var1, var2, weight){
+		return var1 + weight * ( var2 - var1 )
+	}
+	
+	
 	//export
 	GL = {};
 	GL.Vector4 = Vector4;
@@ -378,6 +449,7 @@
 	GL.Matrix4x4.rotationX = rotationX;
 	GL.Matrix4x4.rotationY = rotationY;
 	GL.Matrix4x4.rotationZ = rotationZ;
+	GL.Matrix4x4.transfer = transfer;
 	GL.GL_BUFFER_TYPE = GL_BUFFER_TYPE;
 	GL.Mode = Mode;
 	GL.VertexAttribPointer = VertexAttribPointer;
