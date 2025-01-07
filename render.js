@@ -334,12 +334,12 @@
 								
 								
 								// Z reclamation,  1/Zn = i * 1/Z1 + j * 1/Z2 + k * 1/Z3;
-								depth = 1 / (i/vertex_src_p_a.Z + j/vertex_src_p_b.Z + k/vertex_src_p_c.Z)
+								depth = 1 / (i/vertex_src_p_a.W + j/vertex_src_p_b.W + k/vertex_src_p_c.W)
 								
 								//barycentric reclamation
-								i *= depth/vertex_src_p_a.Z 
-								j *= depth/vertex_src_p_b.Z 
-								k *= depth/vertex_src_p_c.Z 
+								i *= depth/vertex_src_p_a.W 
+								j *= depth/vertex_src_p_b.W 
+								k *= depth/vertex_src_p_c.W 
 							
 								
 								// depth test
