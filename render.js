@@ -384,7 +384,8 @@
 			intersection = new Vector4(
 				interpolationLiner(v1_pos.X, v2_pos.X, t),
 				interpolationLiner(v1_pos.Y, v2_pos.Y, t),
-				interpolationLiner(v1_pos.Z, v2_pos.Z, t)
+				interpolationLiner(v1_pos.Z, v2_pos.Z, t),
+				interpolationLiner(v1_pos.W, v2_pos.W, t)
 			)
 			
 			//varyings interpolation
