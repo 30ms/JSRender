@@ -229,9 +229,10 @@
 		//structure: [{attri1:[], attri2:[]}, {attri1:[], attri2:[]}]
 		this.varyings = [];
 	};
-	
 
-	Render.CLIPPED_PLANE_Z = new Vector4(0,0,1,1);
+
+	Render.CLIPPED_NEAR = new Vector4(0,0,1,1);
+	Render.CLIPPED_FAR = new Vector4(0,0,-1,1);
 	
 	
 	Render.prototype.drawElements = function(mode,count,offset){
@@ -270,10 +271,9 @@
 					idx_a = ib[idx*3], idx_b = ib[idx*3+1], idx_c = ib[idx*3+2];
 					
 					// clipping triangle
-					let clippedIndices = []
-					clippedIndices.push(...this.clippingLine(idx_a, idx_b, Render.CLIPPED_PLANE_Z))
-					clippedIndices.push(...this.clippingLine(idx_b, idx_c, Render.CLIPPED_PLANE_Z))
-					clippedIndices.push(...this.clippingLine(idx_c, idx_a, Render.CLIPPED_PLANE_Z))
+					let clippedIndices = [idx_a, idx_b, idx_c];
+					clippedIndices = this.clipping(clippedIndices, Render.CLIPPED_FAR);
+					clippedIndices = this.clipping(clippedIndices, Render.CLIPPED_NEAR);
 					
 					//rasterize polygons
 					for(let idx=0; idx<clippedIndices.length-2; idx++) {
@@ -373,6 +373,17 @@
 		}
 	
 	}
+	Render.prototype.clipping = function (indices, plane) {
+		let len = indices.length;
+		let v1, v2;
+		let out = [];
+		for (let i = 0; i < len; i++){
+			v1 = indices[(i - 1 + len) % len];
+			v2 = indices[i];
+			out.push(...this.clippingLine(v1, v2, plane));
+		}
+		return out;
+	};
 	
 	Render.prototype.clippingLine = function(v1_idx, v2_idx, plane){
 		let result = [], positions = this.gl_positions, varyings = this.varyings
