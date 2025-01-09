@@ -167,12 +167,12 @@
 	}
 	
 	
-	var FrameBuffer = function(width, height, color_vec4, depth_f){
+	var FrameBuffer = function(width, height, color_vec4){
 		//RGBA buffer
 		this.colorBuffer = new Uint8Array(width*height*4);
 		this.depthBuffer = new Float32Array(width*height)
 		this.clearColor = color_vec4;
-		this.clearDepth = depth_f;
+		this.clearDepth = 1.0;
 		this.width = width;
 		this.height = height;
 	}
@@ -316,7 +316,6 @@
 						let d;
 						let area_abd, area_bcd, area_cad;
 						let i,j,k;
-						let depth;
 						//draw each pixel in the bound box
 						for(let y = start_y; y < end_y; y++){
 							for(let x = start_x; x < end_x; x++){
@@ -331,20 +330,27 @@
 								
 								// test pixel inside the triangle
 								if(i < 0 || j < 0 || k < 0) continue;
-								
-								
-								// Z reclamation,  1/Zn = i * 1/Z1 + j * 1/Z2 + k * 1/Z3;
-								depth = 1 / (i/vertex_src_p_a.W + j/vertex_src_p_b.W + k/vertex_src_p_c.W)
-								
-								//barycentric reclamation
-								i *= depth/vertex_src_p_a.W 
-								j *= depth/vertex_src_p_b.W 
-								k *= depth/vertex_src_p_c.W 
-							
-								
+
+								// use screen space barycentric to interpolate depth
+								// For the purpose of reducing computational overhead, the calculated depth
+								// value is in the screen space, and the depth value in this space is not linear
+								d.Z = interpolationBarycentric(vertex_src_p_a.Z, vertex_src_p_b.Z, vertex_src_p_c.Z, i, j, k)
+
 								// depth test
-								if(this.frameBuffer.getDepth(x, y) < depth) continue;
-								this.frameBuffer.setDepth(x, y, depth);
+								if(this.frameBuffer.getDepth(x, y) < d.Z) continue;
+								this.frameBuffer.setDepth(x, y, d.Z);
+
+								// perspective reclamation
+								//This interpolation method is suitable for both perspective projection and orthogonal projection.
+								i /= vertex_src_p_a.W
+								j /= vertex_src_p_b.W
+								k /= vertex_src_p_c.W
+								// view space Z,  1/Z_view_n = i * 1 / Z_view_1 + j * 1 / Z_view_2 + k * 1 / Z_view_3;
+								let viewSpaceZ = 1 / (i + j+ k)
+								// barycentric correction,  In/Z_view_n = i / Z_view_1 + j / Z_view_2 + k / Z_view_3
+								i *= viewSpaceZ
+								j *= viewSpaceZ
+								k *= viewSpaceZ
 								
 								
 								let fragment_vars = {};
